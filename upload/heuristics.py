@@ -129,7 +129,7 @@ MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
 
 class ADiff:
-    def __init__(self, chooser=CChooser):
+    def __init__(self, option=None, chooser=CChooser):
         self.db_name = 'ADIDAS'
         self.conn = None
         self.open_db()
@@ -138,7 +138,6 @@ class ADiff:
         self.total_functions1 = None
         self.total_functions2 = None
 
-        self.unreliable = False
         self.relaxed_ratio = False
         self.experimental = False
         self.slow_heuristics = False
@@ -148,6 +147,14 @@ class ADiff:
 
         self.re_cache = {}
 
+        # 2019.05.22 best heuristics?
+        self.best_heuristics = False
+        # 2019.05.22 partial heuristics?
+        self.partial_heuristics = False
+        # Use unreliable heuristics?
+        self.unreliable_heuristics = False
+
+        self.set_option(option)
         ####################################################################
         # LIMITS
         #
@@ -175,13 +182,33 @@ class ADiff:
         self.ignore_all_names = True
         # Ignore small functions?
         self.ignore_small_functions = False
-        # Use unreliable heuristics?
-        self.unreliable = False
         self.max_processed_rows = MAX_PROCESSED_ROWS
         self.timeout = TIMEOUT_LIMIT
 
 
+
         ####################################################################
+    def set_option(self, option):
+        opt = int(option)
+        if opt == 0:
+            pass# default all none
+        if opt in [1, 3, 5, 7]:
+            self.best_heuristics = True
+        if opt in [2, 3, 6, 7]:
+            self.partial_heuristics = True
+        if opt in [4, 5, 6, 7]:
+            self.unreliable_heuristics = True
+
+        # 0: None
+        # 1: Only Best matches
+        # 2: Only Partial matches
+        # 3: Best + Partial
+        # 4: Only Unreliable matches
+        # 5: Best + Unreliable
+        # 6: Partial + Unreliable
+        # 7: ALL
+
+
     def open_db(self):
         self.conn = MySQLdb.connect(host='127.0.0.1', port=3306, user='root', passwd='dviis518', db=self.db_name)
 
@@ -338,205 +365,205 @@ class ADiff:
         # self.total_functions2 = rows[1][0]
         self.total_functions1 = rows[0]["total"]
         self.total_functions2 = rows[1]["total"]
-
-        sql = """SELECT t1.address AS ea, t1.mangled_function, t1.nodes
-                FROM """ + table + """ AS t1
-                INNER JOIN `""" + table2 + """` AS t2 
-                ON (
-                    t1.name = t2.name AND
-                    t1.address = t2.address AND
-                    t1.nodes = t2.nodes AND
-                    t1.edges = t2.edges AND
-                    t1.indegree = t2.indegree AND
-                    t1.outdegree = t2.outdegree AND
-                    t1.instructions = t2.instructions AND
-                    t1.mnemonics = t2.mnemonics AND
-                    t1.names = t2.names AND
-                    t1.prototype = t2.prototype AND
-                    t1.cyclomatic_complexity = t2.cyclomatic_complexity AND
-                    t1.primes_value = t2.primes_value AND
-                    t1.comment = t2.comment AND
-                    t1.mangled_function = t2.mangled_function AND
-                    t1.bytes_hash = t2.bytes_hash AND
-                    t1.pseudocode = t2.pseudocode AND
-                    t1.pseudocode_lines = t2.pseudocode_lines AND
-                    t1.pseudocode_hash1 = t2.pseudocode_hash1 AND
-                    t1.pseudocode_primes = t2.pseudocode_primes AND
-                    t1.function_flags = t2.function_flags AND
-                    t1.assembly = t2.assembly AND
-                    t1.prototype2 = t2.prototype2 AND
-                    t1.pseudocode_hash2 = t2.pseudocode_hash2 AND
-                    t1.pseudocode_hash3 = t2.pseudocode_hash3 AND
-                    t1.strongly_connected = t2.strongly_connected AND
-                    t1.loops = t2.loops AND
-                    t1.rva = t2.rva AND
-                    t1.tarjan_topological_sort = t2.tarjan_topological_sort AND
-                    t1.strongly_connected_spp = t2.strongly_connected_spp AND
-                    t1.clean_assembly = t2.clean_assembly AND
-                    t1.clean_pseudo = t2.clean_pseudo AND
-                    t1.mnemonics_spp = t2.mnemonics_spp AND
-                    t1.switches = t2.switches AND
-                    t1.function_hash = t2.function_hash AND
-                    t1.bytes_sum = t2.bytes_sum AND
-                    t1.md_index = t2.md_index AND
-                    t1.constants = t2.constants AND
-                    t1.constants_count = t2.constants_count AND
-                    t1.segment_rva = t2.segment_rva AND
-                    t1.assembly_addrs = t2.assembly_addrs AND
-                    t1.kgh_hash = t2.kgh_hash AND
-                    t1.binary_name = t2.binary_name AND
-                    t1.is_vul = t2.is_vul 
-                    )"""
-        cur.execute(sql)
-        rows = cur.fetchall()
-        choose = self.best_chooser
-        if len(rows) > 0:
-            for row in rows:
-                name = row["mangled_function"]
-                ea = row["ea"]
-                nodes = int(row["nodes"])
-                proto = row["prototype"]
-                asm = row["assembly"]
-                pseudo = row["pseudocode"]
-                choose.add_item(CChooser.Item(ea, name, asm, proto, pseudo, ea, name, asm, proto, pseudo, "100% equal", 1, nodes, nodes))
-                self.matched1.add(name)
-                self.matched2.add(name)
-
         postfix = ""
-        if self.ignore_small_functions:
-          postfix = " and f.instructions > 5 and df.instructions > 5 "
+        if self.best_heuristics:
+            sql = """SELECT t1.address AS ea, t1.mangled_function, t1.nodes
+                    FROM """ + table + """ AS t1
+                    INNER JOIN `""" + table2 + """` AS t2 
+                    ON (
+                        t1.name = t2.name AND
+                        t1.address = t2.address AND
+                        t1.nodes = t2.nodes AND
+                        t1.edges = t2.edges AND
+                        t1.indegree = t2.indegree AND
+                        t1.outdegree = t2.outdegree AND
+                        t1.instructions = t2.instructions AND
+                        t1.mnemonics = t2.mnemonics AND
+                        t1.names = t2.names AND
+                        t1.prototype = t2.prototype AND
+                        t1.cyclomatic_complexity = t2.cyclomatic_complexity AND
+                        t1.primes_value = t2.primes_value AND
+                        t1.comment = t2.comment AND
+                        t1.mangled_function = t2.mangled_function AND
+                        t1.bytes_hash = t2.bytes_hash AND
+                        t1.pseudocode = t2.pseudocode AND
+                        t1.pseudocode_lines = t2.pseudocode_lines AND
+                        t1.pseudocode_hash1 = t2.pseudocode_hash1 AND
+                        t1.pseudocode_primes = t2.pseudocode_primes AND
+                        t1.function_flags = t2.function_flags AND
+                        t1.assembly = t2.assembly AND
+                        t1.prototype2 = t2.prototype2 AND
+                        t1.pseudocode_hash2 = t2.pseudocode_hash2 AND
+                        t1.pseudocode_hash3 = t2.pseudocode_hash3 AND
+                        t1.strongly_connected = t2.strongly_connected AND
+                        t1.loops = t2.loops AND
+                        t1.rva = t2.rva AND
+                        t1.tarjan_topological_sort = t2.tarjan_topological_sort AND
+                        t1.strongly_connected_spp = t2.strongly_connected_spp AND
+                        t1.clean_assembly = t2.clean_assembly AND
+                        t1.clean_pseudo = t2.clean_pseudo AND
+                        t1.mnemonics_spp = t2.mnemonics_spp AND
+                        t1.switches = t2.switches AND
+                        t1.function_hash = t2.function_hash AND
+                        t1.bytes_sum = t2.bytes_sum AND
+                        t1.md_index = t2.md_index AND
+                        t1.constants = t2.constants AND
+                        t1.constants_count = t2.constants_count AND
+                        t1.segment_rva = t2.segment_rva AND
+                        t1.assembly_addrs = t2.assembly_addrs AND
+                        t1.kgh_hash = t2.kgh_hash AND
+                        t1.binary_name = t2.binary_name AND
+                        t1.is_vul = t2.is_vul 
+                        )"""
+            cur.execute(sql)
+            rows = cur.fetchall()
+            choose = self.best_chooser
+            if len(rows) > 0:
+                for row in rows:
+                    name = row["mangled_function"]
+                    ea = row["ea"]
+                    nodes = int(row["nodes"])
+                    proto = row["prototype"]
+                    asm = row["assembly"]
+                    pseudo = row["pseudocode"]
+                    choose.add_item(CChooser.Item(ea, name, asm, proto, pseudo, ea, name, asm, proto, pseudo, "100% equal", 1, nodes, nodes))
+                    self.matched1.add(name)
+                    self.matched2.add(name)
 
-        # 2019.05.20 add asm, pseudocode on item, to implement asm diff, pseudocode diff
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Same RVA and hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE (df.rva = f.rva
-                        OR df.segment_rva = f.segment_rva)
-                        AND df.bytes_hash = f.bytes_hash
-                        AND df.instructions = f.instructions
-                        AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                        OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
-        log_refresh("Finding with heuristic 'Same RVA and hash'")
-        self.add_matches_from_query(sql, choose)
+            if self.ignore_small_functions:
+              postfix = " and f.instructions > 5 and df.instructions > 5 "
 
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Same order and hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE df.id = f.id
-                        AND df.bytes_hash = f.bytes_hash
-                        AND df.instructions = f.instructions
-                        AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                        OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
-                        AND ((f.nodes > 1 and df.nodes > 1
-                        AND f.instructions > 5 and df.instructions > 5)
-                        OR f.instructions > 10 and df.instructions > 10)"""
-        log_refresh("Finding with heuristic 'Same order and hash'")
-        self.add_matches_from_query(sql, choose)
-
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Function hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.function_hash = df.function_hash 
-                        AND ((f.nodes > 1 and df.nodes > 1
-                        AND f.instructions > 5 and df.instructions > 5)
-                        OR f.instructions > 10 and df.instructions > 10)"""
-        log_refresh("Finding with heuristic 'Function hash'")
-        self.add_matches_from_query(sql, choose)
-
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Bytes hash and names' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.bytes_hash = df.bytes_hash
-                        AND f.names = df.names
-                        AND f.names != '[]'
-                        AND f.instructions > 5 and df.instructions > 5"""
-        log_refresh("Finding with heuristic 'Bytes hash and names'")
-        self.add_matches_from_query(sql, choose)
-
-        #cast(f.md_index as float) md1, cast(df.md_index as float) md2
-
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Bytes hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.md_index md1, df.md_index md2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.bytes_hash = df.bytes_hash
-                        AND f.instructions > 5 and df.instructions > 5"""
-        log_refresh("Finding with heuristic 'Bytes hash'")
-        self.add_matches_from_query(sql, choose)
-
-        #if not self.ignore_all_names:
-        #    self.find_same_name(self.partial_chooser)
-
-        if self.unreliable:
+            # 2019.05.20 add asm, pseudocode on item, to implement asm diff, pseudocode diff
             sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Bytes sum' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.bytes_sum = df.bytes_sum
-                        AND f.size = df.size
-                        AND f.mnemonics = df.mnemonics
-                        AND f.instructions > 5 and df.instructions > 5"""
-            log_refresh("Finding with heuristic 'Bytes sum'")
+                            'Same RVA and hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE (df.rva = f.rva
+                            OR df.segment_rva = f.segment_rva)
+                            AND df.bytes_hash = f.bytes_hash
+                            AND df.instructions = f.instructions
+                            AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                            OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
+            log_refresh("Finding with heuristic 'Same RVA and hash'")
             self.add_matches_from_query(sql, choose)
 
-        sql = """ SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.pseudocode = df.pseudocode
-                        AND df.pseudocode is not null
-                        AND f.pseudocode_lines >= 5 """ + postfix + """
-                        AND f.name not like 'nullsub%'
-                        AND df.name not like 'nullsub%'
-                    UNION
-                    SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.assembly = df.assembly
-                        AND df.assembly is not null
-                        AND f.instructions >= 4 and df.instructions >= 4
-                        AND f.name not like 'nullsub%'
-                        AND df.name not like 'nullsub%' """
-        log_refresh("Finding with heuristic 'Equal assembly or pseudo-code'")
-        self.add_matches_from_query(sql, choose)
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Same order and hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE df.id = f.id
+                            AND df.bytes_hash = f.bytes_hash
+                            AND df.instructions = f.instructions
+                            AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                            OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
+                            AND ((f.nodes > 1 and df.nodes > 1
+                            AND f.instructions > 5 and df.instructions > 5)
+                            OR f.instructions > 10 and df.instructions > 10)"""
+            log_refresh("Finding with heuristic 'Same order and hash'")
+            self.add_matches_from_query(sql, choose)
+
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Function hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE f.function_hash = df.function_hash 
+                            AND ((f.nodes > 1 and df.nodes > 1
+                            AND f.instructions > 5 and df.instructions > 5)
+                            OR f.instructions > 10 and df.instructions > 10)"""
+            log_refresh("Finding with heuristic 'Function hash'")
+            self.add_matches_from_query(sql, choose)
+
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Bytes hash and names' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE f.bytes_hash = df.bytes_hash
+                            AND f.names = df.names
+                            AND f.names != '[]'
+                            AND f.instructions > 5 and df.instructions > 5"""
+            log_refresh("Finding with heuristic 'Bytes hash and names'")
+            self.add_matches_from_query(sql, choose)
+
+            #cast(f.md_index as float) md1, cast(df.md_index as float) md2
+
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Bytes hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.md_index md1, df.md_index md2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE f.bytes_hash = df.bytes_hash
+                            AND f.instructions > 5 and df.instructions > 5"""
+            log_refresh("Finding with heuristic 'Bytes hash'")
+            self.add_matches_from_query(sql, choose)
+
+            #if not self.ignore_all_names:
+            #    self.find_same_name(self.partial_chooser)
+            if self.unreliable_heuristics:
+            #if self.unreliable:
+                sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Bytes sum' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE f.bytes_sum = df.bytes_sum
+                            AND f.size = df.size
+                            AND f.mnemonics = df.mnemonics
+                            AND f.instructions > 5 and df.instructions > 5"""
+                log_refresh("Finding with heuristic 'Bytes sum'")
+                self.add_matches_from_query(sql, choose)
+
+            sql = """ SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                            f.nodes bb1, df.nodes bb2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE f.pseudocode = df.pseudocode
+                            AND df.pseudocode is not null
+                            AND f.pseudocode_lines >= 5 """ + postfix + """
+                            AND f.name not like 'nullsub%'
+                            AND df.name not like 'nullsub%'
+                        UNION
+                        SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                            f.nodes bb1, df.nodes bb2,
+                            f.prototype proto1, df.prototype proto2
+                        FROM """ + table + """ f,
+                            `""" + table2 + """` df
+                        WHERE f.assembly = df.assembly
+                            AND df.assembly is not null
+                            AND f.instructions >= 4 and df.instructions >= 4
+                            AND f.name not like 'nullsub%'
+                            AND df.name not like 'nullsub%' """
+            log_refresh("Finding with heuristic 'Equal assembly or pseudo-code'")
+            self.add_matches_from_query(sql, choose)
 
         sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
                         'Same cleaned up assembly or pseudo-code' description,
@@ -1319,19 +1346,37 @@ class ADiff:
                 print
                 "0x%x 0x%x %d" % (int(ea), int(ea2), r)
 
-            if r == 1:
+            # 2019.05.23 only match
+            partial_option = True
+            unreliable_option = True
+
+            if partial is self.best_chooser:
+                partial_option = self.best_heuristics
+            elif partial is self.partial_chooser:
+                partial_option = self.partial_heuristics
+            elif partial is self.unreliable_chooser:
+                partial_option = self.unreliable_heuristics
+
+            if unreliable is self.best_chooser:
+                unreliable_option = self.best_heuristics
+            elif unreliable is self.partial_chooser:
+                unreliable_option = self.partial_heuristics
+            elif unreliable is self.unreliable_chooser:
+                unreliable_option = self.unreliable_heuristics
+
+            if r == 1 and self.best_heuristics:
                 self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
-            elif r >= 0.5:
+            elif r >= 0.5 and partial_option:
                 partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
-            elif r < 0.5 and unreliable is not None:
+            elif r < 0.5 and unreliable is not None and unreliable_option:
                 unreliable.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
-            else:
+            elif partial_option:
                 partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
@@ -1386,15 +1431,32 @@ class ADiff:
 
             r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
 
-            if r == 1:
+            # 2019.05.23 only match
+            best_option = True
+            partial_option = True
+            if best is self.best_chooser:
+                best_option = self.best_heuristics
+            elif best is self.partial_chooser:
+                best_option = self.partial_heuristics
+            elif best is self.unreliable_chooser:
+                best_option = self.unreliable_heuristics
+
+            if partial is self.best_chooser:
+                partial_option = self.best_heuristics
+            elif partial is self.partial_chooser:
+                partial_option = self.partial_heuristics
+            elif partial is self.unreliable_chooser:
+                partial_option = self.unreliable_heuristics
+
+            if r == 1 and self.best_heuristics:
                 self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
-            elif r > val:
+            elif r > val and best_option:
                 best.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)
-            elif partial is not None:
+            elif partial is not None and partial_option:
                 partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
                 self.matched1.add(name1)
                 self.matched2.add(name2)

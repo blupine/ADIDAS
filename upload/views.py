@@ -28,10 +28,6 @@ def index(request):
 # 		return HttpResponse("invalid data type")
 
 # 2019.05.14 Receive multiple function features and add data to table
-
-def sibal(request):
-	return
-
 @csrf_exempt
 def features(request):
 	if request.method == 'POST':
@@ -50,20 +46,27 @@ def features(request):
 		return HttpResponse("invalid http method")
 
 
+# 0: None
+# 1: Only Best matches
+# 2: Only Partial matches
+# 3: Best + Partial
+# 4: Only Unreliable matches
+# 5: Best + Unreliable
+# 6: Partial + Unreliable
+# 7: ALL
+
 #2019.05.05 Receive list of function features
 @csrf_exempt
 def diff(request):
 	if request.method == 'POST':
-		data = json.loads(request.body.decode('utf-8'))
+		option = request.body.decode('utf-8')[0]
+		print(option)
+		data = json.loads(request.body.decode('utf-8')[1:])
 		if not check_data_validation(data):
 			return HttpResponse("diff failed. invalid data format")
 
-		ad = ADiff()
-		best, partial, reliable = ad.diff(data)
-		ret = list()
-		ret.append(best)
-		ret.append(partial)
-		ret.append(reliable)
+		ad = ADiff(option)
+		ret = ad.diff(data) # ad.diff returns list of best, partial, reliable items
 
 		return HttpResponse(str(ret))
 	else:
@@ -72,7 +75,6 @@ def diff(request):
 
 #2019.05.14 Add function data to each table
 def add_data(data):
-	print("add data called")
 	success_list = []
 	failed_list  = []
 	for index, func in data.items():
@@ -81,36 +83,58 @@ def add_data(data):
 		arch = program['processor']
 
 		#if feature['name'].
-		f = ''
+		# f = ''
+		# if arch == 'pc':
+		# 	if find_duplication(IA32_Functions, feature):
+		# 		f = IA32_Functions(feature)
+		# 		f.save()
+		# 		success_list.append(feature['name'])
+		# 	else:
+		# 		failed_list.append(feature['name'])
+		#
+		# elif arch == 'arm':
+		# 	if find_duplication(ARM_Functions, feature):
+		# 		f = ARM_Functions(feature)
+		# 		f.save()
+		#
+		# 		success_list.append(feature['name'])
+		# 	else:
+		# 		failed_list.append(feature['name'])
+		#
+		# elif arch == 'mips':
+		# 	if find_duplication(MIPS_Functions, feature):
+		# 		f = MIPS_Functions(feature)
+		# 		f.save()
+		# 		success_list.append(feature['name'])
+		#
+		# 	else:
+		# 		failed_list.appned(feature['name'])
+		#
+		# else:
+		# 	failed_list.append(feature['name'])
+		name = feature['name']
+		if name.startswith("sub_") or name.startswith("j_") or name.startswith("unknown") or name.startswith("nullsub_"):
+			failed_list.append(feature['name'])
+			continue
+
+		model = None
 		if arch == 'pc':
-			if find_duplication(IA32_Functions, feature):
-				f = IA32_Functions(feature)
-				f.save()
-				success_list.append(feature['name'])
-			else:
-				failed_list.append(feature['name'])
-
+			model = IA32_Functions
 		elif arch == 'arm':
-			if find_duplication(ARM_Functions, feature):
-				f = ARM_Functions(feature)
-				f.save()
-
-				success_list.append(feature['name'])
-			else:
-				failed_list.append(feature['name'])
-
+			model = ARM_Functions
 		elif arch == 'mips':
-			if find_duplication(MIPS_Functions, feature):
-				f = MIPS_Functions(feature)
-				f.save()
-				success_list.append(feature['name'])
+			model = MIPS_Functions
 
-			else:
-				failed_list.appned(feature['name'])
+		if model is None:
+			failed_list.append(feature['name'])
+			continue
 
+		if find_duplication(model, feature):
+			f = model(feature)
+			f.save()
+			success_list.append(feature['name'])
 		else:
 			failed_list.append(feature['name'])
-
 
 	return success_list, failed_list
 
