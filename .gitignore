@@ -1,1 +1,5 @@
-.adidas_project/settings.py
+adidas_project/settings.py
+
+upload/tests.py
+
+sftp-config.json
