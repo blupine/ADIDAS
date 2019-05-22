@@ -28,6 +28,10 @@ def index(request):
 # 		return HttpResponse("invalid data type")
 
 # 2019.05.14 Receive multiple function features and add data to table
+
+def sibal(request):
+	return
+
 @csrf_exempt
 def features(request):
 	if request.method == 'POST':
