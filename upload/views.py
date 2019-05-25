@@ -54,6 +54,7 @@ def features(request):
 # 5: Best + Unreliable
 # 6: Partial + Unreliable
 # 7: ALL
+# 7: ALL
 
 #2019.05.05 Receive list of function features
 @csrf_exempt
@@ -67,7 +68,7 @@ def diff(request):
 
 		ad = ADiff(option)
 		ret = ad.diff(data) # ad.diff returns list of best, partial, reliable items
-
+		print(ret)
 		return HttpResponse(str(ret))
 	else:
 		return HttpResponse("invalid http method")
@@ -171,7 +172,9 @@ def add_data(data):
 # Tight standard : 'bytes_hash'
 # Loose standard : ?
 def find_duplication(model, funcdict):
+	print(model)
 	result_list = model.objects.values_list('bytes_hash', flat=True).distinct()
+	print(type(result_list))
 	for item in result_list:
 		if item == funcdict['bytes_hash']:
 			return 0

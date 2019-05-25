@@ -224,6 +224,7 @@ class ADiff:
         self.unreliable_chooser = self.chooser("Unreliable matches", self)
         self.partial_chooser = self.chooser("Partial matches", self)
         self.best_chooser = self.chooser("Best matches", self)
+        self.vulnerable_chooser = self.chooser("Vulnerable matches", self)
 
         self.unmatched_second = self.chooser("Unmatched in secondary", self, False)
         self.unmatched_primary = self.chooser("Unmatched in primary", self, False)
@@ -349,7 +350,7 @@ class ADiff:
             # drop temp table
 
         #print(self.best_chooser.items)
-        return self.best_chooser.items, self.partial_chooser.items, self.unreliable_chooser.items
+        return self.best_chooser.items, self.partial_chooser.items, self.unreliable_chooser.items, self.vulnerable_chooser.items
 
     def find_equal_matches(self, table, table2):
         cur = self.db_cursor()
@@ -439,7 +440,8 @@ class ADiff:
                             f.nodes bb1, df.nodes bb2,
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode pseudo1, df.pseudocode pseudo2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE (df.rva = f.rva
@@ -456,7 +458,8 @@ class ADiff:
                             f.nodes bb1, df.nodes bb2,
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode pseudo1, df.pseudocode pseudo2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE df.id = f.id
@@ -475,7 +478,8 @@ class ADiff:
                             f.nodes bb1, df.nodes bb2,
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode pseudo1, df.pseudocode pseudo2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.function_hash = df.function_hash 
@@ -490,7 +494,8 @@ class ADiff:
                             f.nodes bb1, df.nodes bb2,
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode pseudo1, df.pseudocode pseudo2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.bytes_hash = df.bytes_hash
@@ -508,7 +513,8 @@ class ADiff:
                             f.md_index md1, df.md_index md2,
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode pseudo1, df.pseudocode pseudo2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.bytes_hash = df.bytes_hash
@@ -525,7 +531,8 @@ class ADiff:
                             f.nodes bb1, df.nodes bb2,
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode pseudo1, df.pseudocode pseudo2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.bytes_sum = df.bytes_sum
@@ -540,7 +547,8 @@ class ADiff:
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.pseudocode = df.pseudocode
@@ -554,7 +562,8 @@ class ADiff:
                             f.assembly asm1, df.assembly asm2,
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.assembly = df.assembly
@@ -572,7 +581,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f, 
                             `""" + table2 + """` df
                     WHERE (f.clean_assembly = df.clean_assembly
@@ -589,7 +599,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.rva = df.rva
@@ -619,7 +630,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                 (SELECT kgh_hash
@@ -646,7 +658,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                 (SELECT md_index
@@ -693,7 +706,8 @@ class ADiff:
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2
                         df.tarjan_topological_sort, df.strongly_connected_spp,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.md_index = df.md_index
@@ -710,7 +724,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes 
@@ -740,7 +755,9 @@ class ADiff:
                         f.assembly asm1, df.assembly asm2,
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
-                        f.md_index md1, df.md_index md2
+                        f.md_index md1, df.md_index md2,
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes 
@@ -770,7 +787,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.switches = df.switches
@@ -785,7 +803,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.constants = df.constants
@@ -801,7 +820,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.rva = df.rva
@@ -820,7 +840,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.names = df.names
@@ -838,7 +859,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes
@@ -860,7 +882,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes
@@ -881,7 +904,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.mnemonics = df.mnemonics
@@ -898,7 +922,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.mnemonics_spp = df.mnemonics_spp
@@ -920,7 +945,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE df.pseudocode_hash1 = f.pseudocode_hash1
@@ -935,7 +961,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE df.pseudocode_hash1 = f.pseudocode_hash1""" + postfix
@@ -948,7 +975,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.pseudocode_lines = df.pseudocode_lines
@@ -967,7 +995,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE df.pseudocode_primes = f.pseudocode_primes
@@ -982,7 +1011,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE SUBSTR(df.pseudocode_hash1, 1, 16) = substr(f.pseudocode_hash1, 1, 16)
@@ -998,7 +1028,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.strongly_connected = df.strongly_connected
@@ -1014,7 +1045,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.names = df.names
@@ -1032,7 +1064,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.names = df.names
@@ -1048,7 +1081,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.strongly_connected = df.strongly_connected
@@ -1065,7 +1099,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.strongly_connected_spp = df.strongly_connected_spp
@@ -1081,7 +1116,8 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
+                            f.prototype proto1, df.prototype proto2,
+                            f.is_vul is_vul, f.comment comment
                         FROM """ + table + """ f,
                             `""" + table2 + """` df
                         WHERE f.loops = df.loops
@@ -1097,7 +1133,8 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
+                        f.prototype proto1, df.prototype proto2,
+                        f.is_vul is_vul, f.comment comment
                     FROM """ + table + """ f,
                         `""" + table2 + """` df
                     WHERE f.names = df.names
@@ -1277,6 +1314,10 @@ class ADiff:
             pseudo2 = row["pseudo2"]
             proto1 = row["proto1"]
             proto2 = row["proto2"]
+
+            is_vul = row["is_vul"]
+            comment = row["comment"]
+
             # ea = str(row[0])
             # name1 = row[1]
             # ea2 = str(row[2])
@@ -1288,10 +1329,16 @@ class ADiff:
             if name1 in self.matched1 or name2 in self.matched2:
                 continue
 
-            choose.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, 1, bb1, bb2))
+            # if the function is vulnerable
+            if is_vul == '1':
+                # return comment(vulnerable forms) as description
+                desc = comment
+                self.vulnerable_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, 1, bb1, bb2))
+            else:
+                choose.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, 1, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
-            print(name1, name2)
+            #print(name1, name2)
         cur.close()
 
     def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None, debug=False):
@@ -1338,6 +1385,9 @@ class ADiff:
             proto1 = row["proto1"]
             proto2 = row["proto2"]
 
+            is_vul = row["is_vul"]
+            comment = row["comment"]
+
             if name1 in self.matched1 or name2 in self.matched2:
                 continue
 
@@ -1346,7 +1396,7 @@ class ADiff:
                 print
                 "0x%x 0x%x %d" % (int(ea), int(ea2), r)
 
-            # 2019.05.23 only match
+            # 2019.05.23 only user selected match
             partial_option = True
             unreliable_option = True
 
@@ -1364,22 +1414,24 @@ class ADiff:
             elif unreliable is self.unreliable_chooser:
                 unreliable_option = self.unreliable_heuristics
 
-            if r == 1 and self.best_heuristics:
-                self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif r >= 0.5 and partial_option:
-                partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif r < 0.5 and unreliable is not None and unreliable_option:
-                unreliable.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif partial_option:
-                partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+            # if the function is vulnerable
+            if is_vul == '1':
+                # return comment(vulnerable forms) as description
+                desc = comment
+                self.vulnerable_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+            else:
+
+                if r == 1 and self.best_heuristics:
+                    self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif r >= 0.5 and partial_option:
+                    partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif r < 0.5 and unreliable is not None and unreliable_option:
+                    unreliable.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif partial_option:
+                    partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+
+            self.matched1.add(name1)
+            self.matched2.add(name2)
 
         cur.close()
 
@@ -1426,6 +1478,9 @@ class ADiff:
             proto1 = row["proto1"]
             proto2 = row["proto2"]
 
+            is_vul = row["is_vul"]
+            comment = row["comment"]
+
             if name1 in self.matched1 or name2 in self.matched2:
                 continue
 
@@ -1448,18 +1503,21 @@ class ADiff:
             elif partial is self.unreliable_chooser:
                 partial_option = self.unreliable_heuristics
 
-            if r == 1 and self.best_heuristics:
-                self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif r > val and best_option:
-                best.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif partial is not None and partial_option:
-                partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+            # if the function is vulnerable
+            if is_vul == '1':
+                # return comment(vulnerable forms) as description
+                desc = comment
+                self.vulnerable_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+            else:
+                if r == 1 and self.best_heuristics:
+                    self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif r > val and best_option:
+                    best.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif partial is not None and partial_option:
+                    partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+
+            self.matched1.add(name1)
+            self.matched2.add(name2)
 
         cur.close()
 

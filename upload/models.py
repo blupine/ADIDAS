@@ -48,7 +48,7 @@ class Functions(models.Model):
 
 	# new field
 	binary_name				= models.TextField(null = True)
-	is_vul					= models.IntegerField(null = True)
+	is_vul					= models.TextField(null = True)
 	
 	def __init__(self, datadict):
 		models.Model.__init__(self,
@@ -93,10 +93,13 @@ class Functions(models.Model):
 			constants_count 		= datadict['constants_count'],
 			segment_rva 			= datadict['segment_rva'],			
 			assembly_addrs 			= datadict['assembly_addrs'],
-			kgh_hash 				= datadict['kgh_hash'])
+			kgh_hash 				= datadict['kgh_hash'],
+			is_vul					= datadict['is_vul'])
+
+			# binary_name
 
 	class Meta:
-		abstract = True
+			abstract = True
 
 class ARM_Functions(Functions):
 	pass

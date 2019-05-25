@@ -1,5 +1,12 @@
 adidas_project/settings.py
+adidas_project/asgi.py
 
+upload/consumers.py
+upload/out
+upload/routing.py
 upload/tests.py
 
+db.sqlite3
+function.test.py
+geckodriver.log
 sftp-config.json
