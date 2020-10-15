@@ -9,7 +9,7 @@ And diff your stripped binary to restore symbol with database.
 
 Used binary diffing logic of [diaphora](https://github.com/joxeankoret/diaphora) 
 
-Use *client_extension.py* as a client plugin in IDA Disassembler.
+Use *client_extension.py* as a client plugin on IDA Disassembler.
 
 
 
