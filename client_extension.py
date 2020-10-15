@@ -1525,16 +1525,5 @@ if __name__ == '__main__':
             select_items.append(my_item)
         select_chooser.items = select_items
         select_chooser.show()
-        info("Select your functions")
 
-#  When bong's socket finish, these will be used
-    # import time
-    # t = 1
-    # while(t <= 3):
-    #     text = "time: " + str(t) + " seconds"
-    #     show_wait_box("HIDECANCEL\n" + text)
-    #     time.sleep(1)
-    #     hide_wait_box()
-    #     t += 1
-    # hide_wait_box()
-    # info("finish!")
+        info("Select your functions")
