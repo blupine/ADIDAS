@@ -1,0 +1,48 @@
+{
+    "best matching": [{
+        "ea": "0040181a",
+        "origin name": "group_number_0",
+        "ea2": "0040181d",
+        "matched name": "group_number_0",
+        "ratio": 1.000,
+        "bb1": 16,
+        "bb2": 16,
+        "heuristic": "Equal pseudo-code",
+        "asm": ["push    rbp", "push    rbp"],
+        "pseudo": ["char *__fastcall group_number_0(){}", "char *__fastcall group_number_0(){}"]
+    }, {
+        "ea": "0040181b",
+        "origin name": "group_number_0",
+        "ea2": "0040181d",
+        "matched name": "group_number_0",
+        "ratio": 0.200,
+        "bb1": 16,
+        "bb2": 16,
+        "heuristic": "Equal pseudo-code",
+        "asm": ["push    rbp", "push    rbp"],
+        "pseudo": ["char *__fastcall group_number_0(){}", "char *__fastcall group_number_0(){}"]
+    }, {
+        "ea": "0040181c",
+        "origin name": "group_number_0",
+        "ea2": "0040181d",
+        "matched name": "group_number_0",
+        "ratio": 0.500,
+        "bb1": 16,
+        "bb2": 16,
+        "heuristic": "Equal pseudo-code",
+        "asm": ["push    rbp", "push    rbp"],
+        "pseudo": ["char *__fastcall group_number_0(){}", "char *__fastcall group_number_0(){}"]
+    }],
+    "partial matching": [{}, {}],
+    "unreliable matching": [{}, {}],
+    "vulnerable matching": [{}, {}],
+    "statistics": [{
+        "matched": 4,
+        "unmatched": 7
+    }, {
+        "best matching": 2,
+        "partial matching": 4,
+        "unreliable matching": 3,
+        "vulnerable matching": 1
+    }]
+}

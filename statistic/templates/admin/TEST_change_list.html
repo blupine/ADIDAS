@@ -1,0 +1,195 @@
+{% extends "admin/change_list.html" %}
+{% block content_title %}
+    <h1> Sales Summary </h1>
+{% endblock %}
+{% block result_list %}
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width" initial-scale="1">
+    <title>HONGFRONT</title>
+    <!-- Load Bootstrap -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- Load c3 to draw chart -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/c3/0.7.9/c3.min.css">
+    <!-- Load Roboto font -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap">
+    <link rel="stylesheet" href="/static/main.css">
+</head>
+
+<body>
+    <div id="bg"></div>
+    <div class="container-fluid" style="position: relative;">
+        <div class="row">
+            <div class="col-lg-6 mt-4">
+                <div class="card bg-dark">
+                    <div class="card-header text-white">
+                        Chart 1
+                    </div>
+                    <div class="card-body px-0 py-0">
+                        <div class="chart" id="chart_1"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6 mt-4">
+                <div class="card bg-dark">
+                    <div class="card-header text-white">
+                        Chart 2
+                    </div>
+                    <div class="card-body px-0 py-0">
+                        <div class="chart" id="chart_2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col mt-4">
+                <div class="card bg-dark text-white">
+                    <div class="card-header">
+                        <div class="float-left">
+                            Table 1
+                        </div>
+                        <div class="float-right">
+                            <!--
+                            <button class="btn btn-outline-light btn-sm" id='traffic-hold'>Button 1</button>
+                            -->
+                        </div>
+                    </div>
+                    <div class="card-body px-0 py-0">
+                        <div class="table-responsive">
+                            <table class="table table-sm table-dark table-striped" id="traffic_table">
+                                <thead id="table-head"></thead>
+                                <tbody id="table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer class="bg-dark text-secondary mt-4 py-4">
+        <div class="text-center">
+            <p style="font-size: 0.75rem;">HONGLAB ⓒ 2019</p>
+        </div>
+    </footer>
+    <div class="modal" id="codeModal" tabindex="-1" role="dialog" aria-labelledby="codeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 id="modalName" class="modal-title" id="codeModalLabel"></h6>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                      </button>
+                </div>
+                <div class="modal-body">
+                    <div class="container-fluid">
+                        <div class="row">
+                            <div class="col-6" style='border-right: 2px solid lightgrey;'>
+                                <h4 style='font-weight: bold; color: grey;'>#1</h4>
+                                <pre id="content_1"></pre>
+                            </div>
+                            <div class="col" style='border-left: 2px solid lightgrey;'>
+                                <h4 style='font-weight: bold; color: grey;'>#2</h4>
+                                <pre id="content_2"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">CLOSE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Load jQuery -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <!-- Load Bootstrap -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <!-- Load c3 based on d3 to draw chart -->
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/c3/0.7.9/c3.min.js"></script>
+    <script>
+        /* Make a layout for chart */
+        var charts = new Array();
+        for (var i = 0; i < 2; i++) {
+            charts.push(c3.generate({
+                bindto: "#chart_" + (i + 1),
+                size: {
+                    height: 360
+                },
+                data: {
+                    columns: [],
+                    type: 'donut'
+                },
+                color: {
+                    pattern: ['#6f79a8']
+                },
+                legend: {
+                    position: 'right'
+                }
+            }));
+        }
+
+        /* Get JSON data */
+        $.getJSON({{ filename }}, function(data) {
+            /* Initialize table */
+            var tdatas = data['best matching'];
+            var code;
+            /* Initialize table head */
+            code = "<tr>";
+            for (var key in tdatas[0]) {
+                code += "<th>" + key + "</th>";
+            }
+            code += "</tr>";
+            $("#table-head").append(code);
+            /* Initialize table body */
+            for (var i in tdatas) {
+                code = "<tr>"
+                for (var key in tdatas[i]) {
+                    if (["asm", "pseudo"].indexOf(key) !== -1)
+                        continue;
+                    code += "<td>" + tdatas[i][key] + "</td>";
+                }
+                code += "<td><button data-toggle='modal' data-target='#codeModal' class='view_asm btn btn-outline-light btn-sm'>VIEW</button></td>";
+                code += "<td><button data-toggle='modal' data-target='#codeModal' class='view_pseudo btn btn-outline-light btn-sm'>VIEW</button></td>";
+                code += "</tr>";
+                $("#table-body").append(code);
+            }
+            /* Apply click events in table */
+            /* on buttons about assembly code */
+            var btns_asm = $('button.view_asm');
+            for (var i = 0; i < btns_asm.length; i++) {
+                $(btns_asm[i]).on('click', function(id) {
+                    return function(event) {
+                        $('#modalName').text('Assembly Code');
+                        $('#content_1').text(data['best matching'][id]['asm'][0]);
+                        $('#content_2').text(data['best matching'][id]['asm'][1]);
+                    };
+                }(i));
+            }
+            /* on buttons about pseudocode */
+            var btns_pseudo = $('button.view_pseudo');
+            for (var i = 0; i < btns_pseudo.length; i++) {
+                $(btns_pseudo[i]).on('click', function(id) {
+                    return function(event) {
+                        $('#modalName').text('Pseudocode');
+                        $('#content_1').text(data['best matching'][id]['pseudo'][0]);
+                        $('#content_2').text(data['best matching'][id]['pseudo'][1]);
+                    };
+                }(i));
+            }
+
+            /* Initialize charts */
+            var cdatas;
+            cdatas = data['statistics'];
+            for (var i in cdatas) {
+                for (var key in cdatas[i]) {
+                    charts[i].load({
+                        columns: [
+                            [key, cdatas[i][key]]
+                        ]
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+{% endblock %}
+{% block pagination %}{% endblock %}

@@ -16,8 +16,11 @@ Including another URLconf
 from django.contrib import admin
 #from django.urls import include, path 
 from django.conf.urls import include, url
+import xadmin
 
 urlpatterns = [
+	url(r'^statistic/', include('statistic.urls')),
 	url(r'^upload/', include('upload.urls')),
-	url(r'^admin/', admin.site.urls),
+	# url(r'^admin/', xadmin.site.urls),
+	url(r'^admin/',admin.site.urls)
 ]

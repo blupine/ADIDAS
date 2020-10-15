@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width" initial-scale="1">
+    <title>HONGFRONT</title>
+    <!-- Load Bootstrap -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <!-- Load c3 to draw chart -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/c3/0.7.9/c3.min.css">
+    <!-- Load Roboto font -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:400,700&display=swap">
+    <link rel="stylesheet" href="/static/main.css">
+</head>
+
+<body>
+    <div id="bg"></div>
+    <div class="container">
+        <div class="row">
+            <div class="col-lg-6 mt-4">
+                <div class="card purple">
+                    <div class="card-header">
+                        Chart 1
+                    </div>
+                    <div class="card-body px-0 py-4">
+                        <div class="chart" id="chart_1"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6 mt-4">
+                <div class="card purple">
+                    <div class="card-header">
+                        Chart 2
+                    </div>
+                    <div class="card-body px-0 py-4">
+                        <div class="chart" id="chart_2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col mt-4">
+                <div class="card purple">
+                    <div class="card-header">
+                        <div class="float-left" id="table_1_title">
+                                Detailed Information
+                        </div>
+                        <div class="float-right">
+                            <a href="{{ file_link }}" class="btn btn-sm btn-link white-outline" id="download" download>DOWNLOAD</a>
+                        </div>
+                    </div>
+                    <div class="card-body px-0 py-4">
+                        <div class="table-responsive" id="table_1">
+                            <h6 style='text-align: center; color: gray;'>This is an area to show you the details. Click data in the second chart.</h6>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer class="mt-4">HONGLAB ⓒ 2019</footer>
+    <div class="modal" id="codeModal" tabindex="-1" role="dialog" aria-labelledby="codeModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-xl" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h6 id="modalName" class="modal-title" id="codeModalLabel"></h6>
+                </div>
+                <div class="modal-body">
+                    <div class="container-fluid">
+                        <div class="row">
+                            <div class="col-xl-6 mb-4">
+                                <div class="card code">
+                                    <div class="card-header">#1</div>
+                                    <div class="card-body"><pre class="text-white" id="content_1"></pre></div>
+                                </div>
+                            </div>
+                            <div class="col-xl-6 mb-4">
+                                <div class="card code">
+                                    <div class="card-header">#2</div>
+                                    <div class="card-body"><pre class="text-white" id="content_2"></pre></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link purple" data-dismiss="modal">CLOSE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Load jQuery -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <!-- Load Bootstrap -->
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    <!-- Load c3 based on d3 to draw chart -->
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/c3/0.7.9/c3.min.js"></script>
+    <script>
+        var DATA;
+
+/* Make a layout for chart */
+var CHARTS;
+var LOAD_CHARTS = function() {
+    CHARTS = new Array();
+    var chartTitles;
+    for (var i = 0; i < 2; i++) {
+        CHARTS.push(function(_index) {
+            return c3.generate({
+                bindto: "#chart_" + (_index + 1),
+                size: {
+                    height: 200
+                },
+                data: {
+                    columns: [],
+                    type: 'donut',
+                    onmouseover: function(d, i) {
+                        $(chartTitles[_index]).text((d['ratio'] * 100).toFixed(1) + '%');
+                        $(chartTitles[_index]).css('fill', $(i).css('fill'));
+                    },
+                    onmouseout: function(d, i) {
+                        $(chartTitles[_index]).text('');
+                    },
+                    onclick: function(d, i) {
+                        if (_index == 1)
+                            REFRESH_TABLE(d['id']);
+                    }
+                },
+                tooltip: {
+                    show: false
+                },
+                color: {
+                    pattern: ['#e57373', '#ce93d8', '#9fa8da', '#80cbc4', '#ffd54f', '#ffab91']
+                },
+                /* Reverse engineering to compute ratio */
+                legend: {
+                    position: 'right',
+                    item: {
+                        onmouseover: function(id) {
+                            CHARTS[_index].focus(id);
+
+                            var datas = CHARTS[_index].data();
+                            var numerator = CHARTS[_index].data(id)[0]['values'][0]['value'];
+                            var denominator = 0;
+                            for (var i in datas)
+                                denominator += datas[i]['values'][0]['value'];
+                            $(chartTitles[_index]).text((numerator / denominator * 100).toFixed(1) + '%');
+                            $(chartTitles[_index]).css('fill', CHARTS[_index].color(id));
+                        },
+                        onmouseout: function(id) {
+                            CHARTS[_index].revert();
+
+                            $(chartTitles[_index]).text('');
+                        },
+                        onclick: function(id) {
+                            if (_index == 1)
+                                REFRESH_TABLE(id);
+                        }
+                    }
+                },
+                donut: {
+                    width: 24,
+                    title: "",
+                    label: {
+                        show: false
+                    }
+                }
+            });
+        }(i));
+    }
+    chartTitles = $('.c3-chart-arcs-title');
+}
+
+/* Initialize or refresh charts */
+var REFRESH_CHARTS = function() {
+    var chartDatas = DATA['statistics'];
+    for (var i in chartDatas) {
+        for (var key in chartDatas[i]) {
+            CHARTS[i].load({
+                columns: [
+                    [key, chartDatas[i][key]]
+                ]
+            });
+        }
+    }
+};
+
+/* Initialize or refresh table */
+var REFRESH_TABLE = function(category) {
+    $('#table_1').children().remove();
+    $('#table_1_title').text(category);
+
+    var tableDatas = DATA[category];
+    var code = "<table class='table table-sm table-striped'>";
+    /* Initialize table head */
+    code += "<thead>";
+    code += "<tr>";
+    for (var key in tableDatas[0]) {
+        code += "<th>" + key + "</th>";
+    }
+    code += "</tr>";
+    code += "</thead>";
+    /* Initialize table body */
+    code += "<tbody>";
+    for (var i in tableDatas) {
+        code += "<tr>"
+        for (var key in tableDatas[i]) {
+            if (["asm", "pseudo"].indexOf(key) !== -1)
+                continue;
+            code += "<td>" + tableDatas[i][key] + "</td>";
+        }
+        code += "<td><button data-toggle='modal' data-target='#codeModal' class='pseudo btn btn-sm btn-link purple'>VIEW</button></td>";
+        code += "<td><button data-toggle='modal' data-target='#codeModal' class='asm btn btn-sm btn-link purple'>VIEW</button></td>";
+        code += "</tr>";
+    }
+    code += "</tbody>";
+    code += "</table>";
+    $("#table_1").append(code);
+    /* Apply click events in table */
+    /* on buttons about assembly code */
+    var buttonAssembles = $('button.asm');
+    for (var i = 0; i < buttonAssembles.length; i++) {
+        $(buttonAssembles[i]).on('click', function(_index) {
+            return function(event) {
+                $('#modalName').text('Assembly Code');
+                $('#content_1').text(DATA[category][_index]['asm'][0]);
+                $('#content_2').text(DATA[category][_index]['asm'][1]);
+            };
+        }(i));
+    }
+    /* on buttons about pseudocode */
+    var buttonPseudos = $('button.pseudo');
+    for (var i = 0; i < buttonPseudos.length; i++) {
+        $(buttonPseudos[i]).on('click', function(_index) {
+            return function(event) {
+                $('#modalName').text('Pseudocode');
+                $('#content_1').text(DATA[category][_index]['pseudo'][0]);
+                $('#content_2').text(DATA[category][_index]['pseudo'][1]);
+            };
+        }(i));
+    }
+};
+
+/* Get JSON data */
+$.getJSON('{{ filename }}', function(data) {
+    DATA = data;
+    LOAD_CHARTS();
+    REFRESH_CHARTS();
+});
+    </script>
+</body>
+
+</html>

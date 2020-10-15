@@ -5,6 +5,10 @@ import threading
 from difflib import SequenceMatcher
 #from cStringIO import StringIO
 from io import StringIO
+from django.conf import settings
+
+import json
+import openpyxl
 
 CMP_REPS = ["loc_", "j_nullsub_", "nullsub_", "j_sub_", "sub_",
             "qword_", "dword_", "byte_", "word_", "off_", "def_", "unk_", "asc_",
@@ -129,7 +133,7 @@ MAX_PROCESSED_ROWS = 1000000
 TIMEOUT_LIMIT = 60 * 3
 
 class ADiff:
-    def __init__(self, chooser=CChooser):
+    def __init__(self, option=None, chooser=CChooser):
         self.db_name = 'ADIDAS'
         self.conn = None
         self.open_db()
@@ -138,7 +142,6 @@ class ADiff:
         self.total_functions1 = None
         self.total_functions2 = None
 
-        self.unreliable = False
         self.relaxed_ratio = False
         self.experimental = False
         self.slow_heuristics = False
@@ -148,6 +151,14 @@ class ADiff:
 
         self.re_cache = {}
 
+        # 2019.05.22 best heuristics?
+        self.best_heuristics = False
+        # 2019.05.22 partial heuristics?
+        self.partial_heuristics = False
+        # Use unreliable heuristics?
+        self.unreliable_heuristics = False
+
+        self.set_option(option)
         ####################################################################
         # LIMITS
         #
@@ -175,13 +186,37 @@ class ADiff:
         self.ignore_all_names = True
         # Ignore small functions?
         self.ignore_small_functions = False
-        # Use unreliable heuristics?
-        self.unreliable = False
         self.max_processed_rows = MAX_PROCESSED_ROWS
         self.timeout = TIMEOUT_LIMIT
 
-
+        self.heuristics_done = 0
         ####################################################################
+
+    def set_option(self, option):
+        if option is None:
+            self.best_heuristics = True
+            self.partial_heuristics = True
+            self.unreliable_heuristics = True
+        else:
+            opt = int(option)
+            if opt == 0:
+                pass# default all none
+            if opt in [1, 3, 5, 7]:
+                self.best_heuristics = True
+            if opt in [2, 3, 6, 7]:
+                self.partial_heuristics = True
+            if opt in [4, 5, 6, 7]:
+                self.unreliable_heuristics = True
+
+        # 0: None
+        # 1: Only Best matches
+        # 2: Only Partial matches
+        # 3: Best + Partial
+        # 4: Only Unreliable matches
+        # 5: Best + Unreliable
+        # 6: Partial + Unreliable
+        # 7: ALL
+
     def open_db(self):
         self.conn = MySQLdb.connect(host='127.0.0.1', port=3306, user='root', passwd='dviis518', db=self.db_name)
 
@@ -197,6 +232,7 @@ class ADiff:
         self.unreliable_chooser = self.chooser("Unreliable matches", self)
         self.partial_chooser = self.chooser("Partial matches", self)
         self.best_chooser = self.chooser("Best matches", self)
+        self.vulnerable_chooser = self.chooser("Vulnerable matches", self)
 
         self.unmatched_second = self.chooser("Unmatched in secondary", self, False)
         self.unmatched_primary = self.chooser("Unmatched in primary", self, False)
@@ -262,8 +298,6 @@ class ADiff:
         tmp = self.re_sub("a[A-Z]+[a-z0-9]+_[0-9]+", "aXXX", tmp)
         return tmp
 
-
-
     def diff(self, data):
         cur = self.db_cursor()
         arch = self.get_arch_from_data(data)
@@ -271,58 +305,207 @@ class ADiff:
             print("invalid processor type.")
             return -1
 
+        table = self.create_temp_db(data)
+        table2 = "upload_" + arch + "_functions"
+
+        try:
+            self.do_continue = True
+            if self.do_continue:
+                self.find_equal_matches(table, table2)
+                self.find_matches(table, table2)
+        finally:
+            cur.execute("DROP TABLE `%s`" % table)
+            cur.close()
+
+
+        # 2019.10.02 Allow duplicated matching
+        best = []
+        partial = []
+        unreliable = []
+        vulnerable = []
+
+        final_matched = [] # matched function's name container
+
+        total_dict = dict()
+        best_list = list()
+        partial_list = list()
+        vulnerable_list = list()
+        unreliable_list = list()
+
+        keys = ["ea", "origin name", "ea2", "matched name", "ratio",
+                "bb1", "bb2", "heuristic"]
+
+        wb = openpyxl.Workbook()
+
+        all_keys = [''] + keys + ['asm1', 'asm2', 'pseudo1', 'pseudo2']
+
+        bsheet = wb.active
+        bsheet.title = 'best matching'
+        bsheet.append(all_keys)
+        psheet = wb.create_sheet("partial matching")
+        psheet.append(all_keys)
+        usheet = wb.create_sheet("unreliable matching")
+        usheet.append(all_keys)
+        vsheet = wb.create_sheet("vulnerable matching")
+        vsheet.append(all_keys)
+
+        for items in self.vulnerable_chooser.items:
+            if items[2] not in final_matched:
+                vulnerable.append(items)
+                final_matched.append(items[2]) # index 2 for function name
+
+            temp = dict()
+            for index, key in enumerate(keys):
+                temp[key] = items[index + 1] # + 1 for excepting item[0] (id), id i
+
+            pseudo1 = str(items[11]) + '\n' + str(items[13])
+            pseudo2 = str(items[12]) + '\n' + str(items[14])
+
+
+            temp['pseudo'] = [pseudo1, pseudo2]
+            temp['asm'] = [items[9], items[10]] # [asm1, asm2]
+
+            vulnerable_list.append(temp)
+
+            # for excel report
+
+            vsheet.append(items)
+
+
+
+        for items in self.best_chooser.items:
+            if items[2] not in final_matched:
+                best.append(items)
+                final_matched.append(items[2])
+
+            temp = dict()
+            for index, key in enumerate(keys):
+                temp[key] = items[index + 1]  # + 1 for excepting item[0] (id), id i
+
+            pseudo1 = str(items[11]) + '\n' + str(items[13])
+            pseudo2 = str(items[12]) + '\n' + str(items[14])
+
+            temp['pseudo'] = [pseudo1, pseudo2]
+            temp['asm'] = [items[9], items[10]]  # [asm1, asm2]
+
+            best_list.append(temp)
+            # best_dict[items[0]] = temp
+
+            bsheet.append(items)
+
+        for items in self.partial_chooser.items:
+            if items[2] not in final_matched:
+                partial.append(items)
+                final_matched.append(items[2])
+
+            temp = dict()
+            for index, key in enumerate(keys):
+                temp[key] = items[index + 1]  # + 1 for excepting item[0] (id), id i
+
+            pseudo1 = str(items[11]) + '\n' + str(items[13])
+            pseudo2 = str(items[12]) + '\n' + str(items[14])
+
+            temp['pseudo'] = [pseudo1, pseudo2]
+            temp['asm'] = [items[9], items[10]]  # [asm1, asm2]
+
+            partial_list.append(temp)
+            # partial_dict[items[0]] = temp
+            psheet.append(items)
+
+        for items in self.unreliable_chooser.items:
+            if items[2] not in final_matched:
+                unreliable.append(items)
+                final_matched.append(items[2])
+
+            temp = dict()
+            for index, key in enumerate(keys):
+                temp[key] = items[index + 1]  # + 1 for excepting item[0] (id), id i
+
+            pseudo1 = str(items[11]) + '\n' + str(items[13])
+            pseudo2 = str(items[12]) + '\n' + str(items[14])
+
+            temp['pseudo'] = [pseudo1, pseudo2]
+            temp['asm'] = [items[9], items[10]]  # [asm1, asm2]
+
+            unreliable_list.append(temp)
+            # unreliable_dict[items[0]] = temp
+            usheet.append(items)
+
+
+        total_dict["best matching"] = best_list
+        total_dict["partial matching"] = partial_list
+        total_dict["unreliable matching"] = unreliable_list
+        total_dict["vulnerable matching"] = vulnerable_list
+
+
+        left_doughnut = dict()
+        right_doughnut = dict()
+
+        left_doughnut["matched"] = len(final_matched)
+        left_doughnut["unmatched"] = len(data) - len(final_matched)
+
+        right_doughnut['best matching'] = len(best_list)
+        right_doughnut['partial matching'] = len(partial_list)
+        right_doughnut['unreliable matching'] = len(unreliable_list)
+        right_doughnut['vulnerable matching'] = len(vulnerable_list)
+
+        statistic = list()
+        statistic.append(left_doughnut)
+        statistic.append(right_doughnut)
+
+        total_dict['statistics'] = statistic
+
+        # settings.STATIC_ROOT + '/' + name + '.json', 'w')
+
+        try:
+            filename = str(settings.BASE_DIR) + '/static/userdata/' + table
+            with open(filename + '.json', 'w') as fp:
+                json.dump(total_dict, fp)
+
+            wb.save(filename + '.xlsx')
+
+        except Exception as e:
+            log_refresh("Error on creating user json file")
+            print(e)
+
+        print("=================================================")
+        print(filename)
+
+        url = "http://210.107.195.160:8001/statistic/userdata?filename=" + table
+
+        return best, partial, unreliable, vulnerable, url
+        # return self.best_chooser.items, self.partial_chooser.items, \
+        #        self.unreliable_chooser.items, self.vulnerable_chooser.items
+
+    def evaluation_diff(self, data):
+        cur = self.db_cursor()
+        arch = self.get_arch_from_data(data)
+        if arch == -1:
+            print("invalid processor type.")
+            return -1
+
+        for index in data:
+            values = list()
+            func = data[index]
+            features = func["functions"]
+
+            # append '*' to avoid heuristics using name feature
+            features['name'] = features['name'] + '*'
+
         table = "upload_" + arch + "_functions"
         table2 = self.create_temp_db(data)
 
         try:
-            t0 = time.time()
-
-            #log_refresh("Diffing...", True)
-
             self.do_continue = True
-
             if self.do_continue:
-                # Compare the call graphs
-                #self.check_callgraph()
-
-                # Find the unmodified functions
-                #log_refresh("Finding best matches...")
-                #self.find_equal_matches_parallel(table, data)
                 self.find_equal_matches(table, table2)
-
                 self.find_matches(table, table2)
-                """
-                # Find the modified functions
-                #log_refresh("Finding partial matches")
-                self.find_matches_parallel()
-
-                if self.slow_heuristics:
-                    # Find the functions from the callgraph
-                    #log_refresh("Finding with heuristic 'Callgraph matches'")
-                    self.find_callgraph_matches()
-
-                if self.unreliable:
-                    # Find using likely unreliable methods modified functions
-                    #log_refresh("Finding probably unreliable matches")
-                    self.find_unreliable_matches()
-
-                if self.experimental:
-                    # Find using experimental methods modified functions
-                    #log_refresh("Finding experimental matches")
-                    self.find_experimental_matches()
-
-                # Show the list of unmatched functions in both databases
-                #log_refresh("Finding unmatched functions")
-                self.find_unmatched()
-                """
-                #log("Done. Took {} seconds".format(time.time() - t0))
         finally:
             cur.execute("DROP TABLE `%s`" % table2)
             cur.close()
-            # drop temp table
 
-        #print(self.best_chooser.items)
-        return self.best_chooser.items, self.partial_chooser.items, self.unreliable_chooser.items
+        return self.best_chooser.items, self.partial_chooser.items, \
+               self.unreliable_chooser.items, self.vulnerable_chooser.items
 
     def find_equal_matches(self, table, table2):
         cur = self.db_cursor()
@@ -338,205 +521,214 @@ class ADiff:
         # self.total_functions2 = rows[1][0]
         self.total_functions1 = rows[0]["total"]
         self.total_functions2 = rows[1]["total"]
-
-        sql = """SELECT t1.address AS ea, t1.mangled_function, t1.nodes
-                FROM """ + table + """ AS t1
-                INNER JOIN `""" + table2 + """` AS t2 
-                ON (
-                    t1.name = t2.name AND
-                    t1.address = t2.address AND
-                    t1.nodes = t2.nodes AND
-                    t1.edges = t2.edges AND
-                    t1.indegree = t2.indegree AND
-                    t1.outdegree = t2.outdegree AND
-                    t1.instructions = t2.instructions AND
-                    t1.mnemonics = t2.mnemonics AND
-                    t1.names = t2.names AND
-                    t1.prototype = t2.prototype AND
-                    t1.cyclomatic_complexity = t2.cyclomatic_complexity AND
-                    t1.primes_value = t2.primes_value AND
-                    t1.comment = t2.comment AND
-                    t1.mangled_function = t2.mangled_function AND
-                    t1.bytes_hash = t2.bytes_hash AND
-                    t1.pseudocode = t2.pseudocode AND
-                    t1.pseudocode_lines = t2.pseudocode_lines AND
-                    t1.pseudocode_hash1 = t2.pseudocode_hash1 AND
-                    t1.pseudocode_primes = t2.pseudocode_primes AND
-                    t1.function_flags = t2.function_flags AND
-                    t1.assembly = t2.assembly AND
-                    t1.prototype2 = t2.prototype2 AND
-                    t1.pseudocode_hash2 = t2.pseudocode_hash2 AND
-                    t1.pseudocode_hash3 = t2.pseudocode_hash3 AND
-                    t1.strongly_connected = t2.strongly_connected AND
-                    t1.loops = t2.loops AND
-                    t1.rva = t2.rva AND
-                    t1.tarjan_topological_sort = t2.tarjan_topological_sort AND
-                    t1.strongly_connected_spp = t2.strongly_connected_spp AND
-                    t1.clean_assembly = t2.clean_assembly AND
-                    t1.clean_pseudo = t2.clean_pseudo AND
-                    t1.mnemonics_spp = t2.mnemonics_spp AND
-                    t1.switches = t2.switches AND
-                    t1.function_hash = t2.function_hash AND
-                    t1.bytes_sum = t2.bytes_sum AND
-                    t1.md_index = t2.md_index AND
-                    t1.constants = t2.constants AND
-                    t1.constants_count = t2.constants_count AND
-                    t1.segment_rva = t2.segment_rva AND
-                    t1.assembly_addrs = t2.assembly_addrs AND
-                    t1.kgh_hash = t2.kgh_hash AND
-                    t1.binary_name = t2.binary_name AND
-                    t1.is_vul = t2.is_vul 
-                    )"""
-        cur.execute(sql)
-        rows = cur.fetchall()
-        choose = self.best_chooser
-        if len(rows) > 0:
-            for row in rows:
-                name = row["mangled_function"]
-                ea = row["ea"]
-                nodes = int(row["nodes"])
-                proto = row["prototype"]
-                asm = row["assembly"]
-                pseudo = row["pseudocode"]
-                choose.add_item(CChooser.Item(ea, name, asm, proto, pseudo, ea, name, asm, proto, pseudo, "100% equal", 1, nodes, nodes))
-                self.matched1.add(name)
-                self.matched2.add(name)
-
         postfix = ""
-        if self.ignore_small_functions:
-          postfix = " and f.instructions > 5 and df.instructions > 5 "
+        if self.best_heuristics:
+            sql = """SELECT t1.address AS ea, t1.mangled_function, t1.nodes
+                    FROM `""" + table + """` AS t1
+                    INNER JOIN `""" + table2 + """` AS t2 
+                    ON (
+                        t1.name = t2.name AND
+                        t1.address = t2.address AND
+                        t1.nodes = t2.nodes AND
+                        t1.edges = t2.edges AND
+                        t1.indegree = t2.indegree AND
+                        t1.outdegree = t2.outdegree AND
+                        t1.instructions = t2.instructions AND
+                        t1.mnemonics = t2.mnemonics AND
+                        t1.names = t2.names AND
+                        t1.prototype = t2.prototype AND
+                        t1.cyclomatic_complexity = t2.cyclomatic_complexity AND
+                        t1.primes_value = t2.primes_value AND
+                        t1.comment = t2.comment AND
+                        t1.mangled_function = t2.mangled_function AND
+                        t1.bytes_hash = t2.bytes_hash AND
+                        t1.pseudocode = t2.pseudocode AND
+                        t1.pseudocode_lines = t2.pseudocode_lines AND
+                        t1.pseudocode_hash1 = t2.pseudocode_hash1 AND
+                        t1.pseudocode_primes = t2.pseudocode_primes AND
+                        t1.function_flags = t2.function_flags AND
+                        t1.assembly = t2.assembly AND
+                        t1.prototype2 = t2.prototype2 AND
+                        t1.pseudocode_hash2 = t2.pseudocode_hash2 AND
+                        t1.pseudocode_hash3 = t2.pseudocode_hash3 AND
+                        t1.strongly_connected = t2.strongly_connected AND
+                        t1.loops = t2.loops AND
+                        t1.rva = t2.rva AND
+                        t1.tarjan_topological_sort = t2.tarjan_topological_sort AND
+                        t1.strongly_connected_spp = t2.strongly_connected_spp AND
+                        t1.clean_assembly = t2.clean_assembly AND
+                        t1.clean_pseudo = t2.clean_pseudo AND
+                        t1.mnemonics_spp = t2.mnemonics_spp AND
+                        t1.switches = t2.switches AND
+                        t1.function_hash = t2.function_hash AND
+                        t1.bytes_sum = t2.bytes_sum AND
+                        t1.md_index = t2.md_index AND
+                        t1.constants = t2.constants AND
+                        t1.constants_count = t2.constants_count AND
+                        t1.segment_rva = t2.segment_rva AND
+                        t1.assembly_addrs = t2.assembly_addrs AND
+                        t1.kgh_hash = t2.kgh_hash AND
+                        t1.binary_name = t2.binary_name AND
+                        t1.is_vul = t2.is_vul 
+                        )"""
+            cur.execute(sql)
+            rows = cur.fetchall()
+            choose = self.best_chooser
+            if len(rows) > 0:
+                for row in rows:
+                    name = row["mangled_function"]
+                    ea = row["ea"]
+                    nodes = int(row["nodes"])
+                    proto = row["prototype"]
+                    asm = row["assembly"]
+                    pseudo = row["pseudocode"]
+                    choose.add_item(CChooser.Item(ea, name, asm, proto, pseudo, ea, name, asm, proto, pseudo, "100% equal", 1, nodes, nodes))
+                    self.matched1.add(name)
+                    self.matched2.add(name)
 
-        # 2019.05.20 add asm, pseudocode on item, to implement asm diff, pseudocode diff
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Same RVA and hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE (df.rva = f.rva
-                        OR df.segment_rva = f.segment_rva)
-                        AND df.bytes_hash = f.bytes_hash
-                        AND df.instructions = f.instructions
-                        AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                        OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
-        log_refresh("Finding with heuristic 'Same RVA and hash'")
-        self.add_matches_from_query(sql, choose)
+            if self.ignore_small_functions:
+              postfix = " and f.instructions > 5 and df.instructions > 5 "
 
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Same order and hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE df.id = f.id
-                        AND df.bytes_hash = f.bytes_hash
-                        AND df.instructions = f.instructions
-                        AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
-                        OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
-                        AND ((f.nodes > 1 and df.nodes > 1
-                        AND f.instructions > 5 and df.instructions > 5)
-                        OR f.instructions > 10 and df.instructions > 10)"""
-        log_refresh("Finding with heuristic 'Same order and hash'")
-        self.add_matches_from_query(sql, choose)
-
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Function hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.function_hash = df.function_hash 
-                        AND ((f.nodes > 1 and df.nodes > 1
-                        AND f.instructions > 5 and df.instructions > 5)
-                        OR f.instructions > 10 and df.instructions > 10)"""
-        log_refresh("Finding with heuristic 'Function hash'")
-        self.add_matches_from_query(sql, choose)
-
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Bytes hash and names' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.bytes_hash = df.bytes_hash
-                        AND f.names = df.names
-                        AND f.names != '[]'
-                        AND f.instructions > 5 and df.instructions > 5"""
-        log_refresh("Finding with heuristic 'Bytes hash and names'")
-        self.add_matches_from_query(sql, choose)
-
-        #cast(f.md_index as float) md1, cast(df.md_index as float) md2
-
-        sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Bytes hash' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.md_index md1, df.md_index md2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.bytes_hash = df.bytes_hash
-                        AND f.instructions > 5 and df.instructions > 5"""
-        log_refresh("Finding with heuristic 'Bytes hash'")
-        self.add_matches_from_query(sql, choose)
-
-        #if not self.ignore_all_names:
-        #    self.find_same_name(self.partial_chooser)
-
-        if self.unreliable:
+            # 2019.05.20 add asm, pseudocode on item, to implement asm diff, pseudocode diff
             sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
-                        'Bytes sum' description,
-                        f.nodes bb1, df.nodes bb2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.bytes_sum = df.bytes_sum
-                        AND f.size = df.size
-                        AND f.mnemonics = df.mnemonics
-                        AND f.instructions > 5 and df.instructions > 5"""
-            log_refresh("Finding with heuristic 'Bytes sum'")
+                            'Same RVA and hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE (df.rva = f.rva
+                            OR df.segment_rva = f.segment_rva)
+                            AND df.bytes_hash = f.bytes_hash
+                            AND df.instructions = f.instructions
+                            AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                            OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))"""
+            log_refresh("Finding with heuristic 'Same RVA and hash'")
             self.add_matches_from_query(sql, choose)
 
-        sql = """ SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.pseudocode = df.pseudocode
-                        AND df.pseudocode is not null
-                        AND f.pseudocode_lines >= 5 """ + postfix + """
-                        AND f.name not like 'nullsub%'
-                        AND df.name not like 'nullsub%'
-                    UNION
-                    SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
-                        f.pseudocode pseudo1, df.pseudocode pseudo2,
-                        f.assembly asm1, df.assembly asm2,
-                        f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
-                        f.nodes bb1, df.nodes bb2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
-                        `""" + table2 + """` df
-                    WHERE f.assembly = df.assembly
-                        AND df.assembly is not null
-                        AND f.instructions >= 4 and df.instructions >= 4
-                        AND f.name not like 'nullsub%'
-                        AND df.name not like 'nullsub%' """
-        log_refresh("Finding with heuristic 'Equal assembly or pseudo-code'")
-        self.add_matches_from_query(sql, choose)
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Same order and hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE df.bytes_hash = f.bytes_hash
+                            AND df.instructions = f.instructions
+                            AND ((f.name = df.name and substr(f.name, 1, 4) != 'sub_')
+                            OR (substr(f.name, 1, 4) = 'sub_' or substr(df.name, 1, 4)))
+                            AND ((f.nodes > 1 and df.nodes > 1
+                            AND f.instructions > 5 and df.instructions > 5)
+                            OR f.instructions > 10 and df.instructions > 10)"""
+            log_refresh("Finding with heuristic 'Same hash'")
+            self.add_matches_from_query(sql, choose)
+
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Function hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE f.function_hash = df.function_hash 
+                            AND ((f.nodes > 1 and df.nodes > 1
+                            AND f.instructions > 5 and df.instructions > 5)
+                            OR f.instructions > 10 and df.instructions > 10)"""
+            log_refresh("Finding with heuristic 'Function hash'")
+            self.add_matches_from_query(sql, choose)
+
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Bytes hash and names' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE f.bytes_hash = df.bytes_hash
+                            AND f.names = df.names
+                            AND f.names != '[]'
+                            AND f.instructions > 5 and df.instructions > 5"""
+            log_refresh("Finding with heuristic 'Bytes hash and names'")
+            self.add_matches_from_query(sql, choose)
+
+            #cast(f.md_index as float) md1, cast(df.md_index as float) md2
+
+            sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Bytes hash' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.md_index md1, df.md_index md2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE f.bytes_hash = df.bytes_hash
+                            AND f.instructions > 5 and df.instructions > 5"""
+            log_refresh("Finding with heuristic 'Bytes hash'")
+            self.add_matches_from_query(sql, choose)
+
+            #if not self.ignore_all_names:
+            #    self.find_same_name(self.partial_chooser)
+            if self.unreliable_heuristics:
+            #if self.unreliable:
+                sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
+                            'Bytes sum' description,
+                            f.nodes bb1, df.nodes bb2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE f.bytes_sum = df.bytes_sum
+                            AND f.size = df.size
+                            AND f.mnemonics = df.mnemonics
+                            AND f.instructions > 5 and df.instructions > 5"""
+                log_refresh("Finding with heuristic 'Bytes sum'")
+                self.add_matches_from_query(sql, choose)
+
+            sql = """ SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal pseudo-code' description,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                            f.nodes bb1, df.nodes bb2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE f.pseudocode = df.pseudocode
+                            AND df.pseudocode is not null
+                            AND f.pseudocode_lines >= 5 """ + postfix + """
+                            AND f.name not like 'nullsub%'
+                            AND df.name not like 'nullsub%'
+                        UNION
+                        SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Equal assembly' description,
+                            f.pseudocode pseudo1, df.pseudocode pseudo2,
+                            f.assembly asm1, df.assembly asm2,
+                            f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
+                            f.nodes bb1, df.nodes bb2,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
+                            `""" + table2 + """` df
+                        WHERE f.assembly = df.assembly
+                            AND df.assembly is not null
+                            AND f.instructions >= 4 and df.instructions >= 4
+                            AND f.name not like 'nullsub%'
+                            AND df.name not like 'nullsub%' """
+            log_refresh("Finding with heuristic 'Equal assembly or pseudo-code'")
+            self.add_matches_from_query(sql, choose)
+
+
 
         sql = """ SELECT DISTINCT f.address ea, f.name name1, df.address ea2, df.name name2,
                         'Same cleaned up assembly or pseudo-code' description,
@@ -545,8 +737,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f, 
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f, 
                             `""" + table2 + """` df
                     WHERE (f.clean_assembly = df.clean_assembly
                         OR f.clean_pseudo = df.clean_pseudo) 
@@ -562,8 +755,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.rva = df.rva
                         AND f.instructions = df.instructions
@@ -576,10 +770,6 @@ class ADiff:
         cur.close()
 
     def find_matches(self, table, table2):
-        print("###################################################")
-        print(table)
-        print(table2)
-
         choose = self.partial_chooser
 
         postfix = ""
@@ -592,8 +782,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                 (SELECT kgh_hash
                     FROM diff.functions
@@ -619,8 +810,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                 (SELECT md_index
                     FROM diff.functions
@@ -666,8 +858,9 @@ class ADiff:
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2
                         df.tarjan_topological_sort, df.strongly_connected_spp,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.md_index = df.md_index
                     AND f.md_index > 0
@@ -683,8 +876,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes 
                 AND f.edges = df.edges
@@ -713,8 +907,10 @@ class ADiff:
                         f.assembly asm1, df.assembly asm2,
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
-                        f.md_index md1, df.md_index md2
-                    FROM """ + table + """ f,
+                        f.md_index md1, df.md_index md2,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes 
                     AND f.edges = df.edges
@@ -743,8 +939,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE f.switches = df.switches
                         AND df.switches != '[]' """ + postfix
@@ -758,8 +955,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.constants = df.constants
                     AND f.constants_count = df.constants_count
@@ -774,8 +972,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.rva = df.rva
                     AND f.instructions = df.instructions
@@ -793,8 +992,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.names = df.names
                     AND f.names != '[]'
@@ -811,8 +1011,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes
                     AND f.edges = df.edges
@@ -833,8 +1034,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.nodes = df.nodes
                     AND f.edges = df.edges
@@ -854,8 +1056,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.mnemonics = df.mnemonics
                     AND f.instructions = df.instructions
@@ -871,8 +1074,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.mnemonics_spp = df.mnemonics_spp
                     AND f.instructions = df.instructions
@@ -893,8 +1097,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE df.pseudocode_hash1 = f.pseudocode_hash1
                         OR df.pseudocode_hash2 = f.pseudocode_hash2
@@ -908,8 +1113,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM ``""" + table + """`` f,
                             `""" + table2 + """` df
                         WHERE df.pseudocode_hash1 = f.pseudocode_hash1""" + postfix
             log_refresh("Finding with heuristic 'Pseudo-code fuzzy hash'")
@@ -921,8 +1127,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.pseudocode_lines = df.pseudocode_lines
                     AND f.names = df.names
@@ -940,8 +1147,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE df.pseudocode_primes = f.pseudocode_primes
                         AND f.pseudocode_lines > 3
@@ -955,8 +1163,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE SUBSTR(df.pseudocode_hash1, 1, 16) = substr(f.pseudocode_hash1, 1, 16)
                         OR SUBSTR(df.pseudocode_hash2, 1, 16) = substr(f.pseudocode_hash2, 1, 16)
@@ -971,8 +1180,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.strongly_connected = df.strongly_connected
                     AND f.tarjan_topological_sort = df.tarjan_topological_sort
@@ -987,8 +1197,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.names = df.names
                     AND f.cyclomatic_complexity = df.cyclomatic_complexity
@@ -1005,8 +1216,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE f.names = df.names
                         AND f.cyclomatic_complexity = df.cyclomatic_complexity
@@ -1021,8 +1233,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE f.strongly_connected = df.strongly_connected
                         AND df.strongly_connected > 1
@@ -1038,8 +1251,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.strongly_connected_spp = df.strongly_connected_spp
                     AND df.strongly_connected_spp > 1
@@ -1054,8 +1268,9 @@ class ADiff:
                             f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                             f.nodes bb1, df.nodes bb2,
                             f.md_index md1, df.md_index md2,
-                            f.prototype proto1, df.prototype proto2
-                        FROM """ + table + """ f,
+                            f.prototype proto1, df.prototype proto2,
+                            df.is_vul is_vul, df.comment comment
+                        FROM `""" + table + """` f,
                             `""" + table2 + """` df
                         WHERE f.loops = df.loops
                         AND df.loops > 1
@@ -1070,8 +1285,9 @@ class ADiff:
                         f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
                         f.nodes bb1, df.nodes bb2,
                         f.md_index md1, df.md_index md2,
-                        f.prototype proto1, df.prototype proto2
-                    FROM """ + table + """ f,
+                        f.prototype proto1, df.prototype proto2,
+                        df.is_vul is_vul, df.comment comment
+                    FROM `""" + table + """` f,
                         `""" + table2 + """` df
                     WHERE f.names = df.names
                     AND f.names != '[]'
@@ -1080,8 +1296,6 @@ class ADiff:
                  """ + postfix
         log_refresh("Finding with heuristic 'Strongly connected components SPP and names'")
         self.add_matches_from_query_ratio_max(sql, self.partial_chooser, None, 0.49)
-
-
 
     # check if function data from client is valid
     def get_arch_from_data(self, data):
@@ -1100,7 +1314,6 @@ class ADiff:
         cur = self.db_cursor()
         # database name can be crashed
         db_name = str(time.time()).replace('.', '')
-        print(db_name)
         # db_name + \
         # CREATE TEMPORARY TABLE IF NOT EXISTS `""" + db_name + \
         create_sql = """
@@ -1147,7 +1360,7 @@ class ADiff:
                 constants TEXT,
                 constants_count INT,
                 segment_rva TEXT,
-                assembly_addrs TEXT,
+                assembly_addrs MEDIUMTEXT,
                 kgh_hash TEXT,
                 binary_name TEXT,
                 is_vul INT,
@@ -1157,10 +1370,10 @@ class ADiff:
         try:
             cur.execute(create_sql)
             self.conn.commit()
-
-            print("creating tempory table success.")
+            log("Diff request received")
+            log("creating tempory table success.")
         except:
-            print("creating temporary table failed.")
+            log("creating temporary table failed.")
             raise
 
         insert_sql = """INSERT INTO `""" + db_name + \
@@ -1193,32 +1406,21 @@ class ADiff:
             #print(tuple(values))
             try:
                 cur.execute(insert_sql, values)
-
-            except:
-                print("inserting received data failed")
+            except Exception as e:
+                log("inserting received data failed")
+                print(e)
                 raise
 
-        print("inserting reveived data to temp database success.")
+        log("inserting reveived data to temp database success.")
         self.conn.commit()
         return db_name
-
-    # Check if all attributes exists in data
-    # def check_data_validation(self, data):
-    #     try:
-    #         for key, func in data.items():
-    #             # print(key, func)
-    #             feature = func["functions"]
-    #             for key in FUNC_ATTR:
-    #                 if key not in feature:
-    #                     return -1
-    #     except:
-    #         return -1
-    #     return 1
 
     def add_matches_from_query(self, sql, choose):
         """ Warning: use this *only* if the ratio is known to be 1.00 """
         if self.all_functions_matched():
             return
+        self.heuristics_done += 1
+        #time.sleep(1)
 
         cur = self.db_cursor()
         try:
@@ -1250,6 +1452,10 @@ class ADiff:
             pseudo2 = row["pseudo2"]
             proto1 = row["proto1"]
             proto2 = row["proto2"]
+
+            is_vul = row["is_vul"]
+            comment = row["comment"]
+
             # ea = str(row[0])
             # name1 = row[1]
             # ea2 = str(row[2])
@@ -1258,19 +1464,29 @@ class ADiff:
             # bb1 = int(row[5])
             # bb2 = int(row[6])
 
-            if name1 in self.matched1 or name2 in self.matched2:
-                continue
 
-            choose.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, 1, bb1, bb2))
+            # 2019.10.05 commented for duplicated matching
+            # if name1 in self.matched1 or name2 in self.matched2:
+            #     continue
+
+            # if the function is vulnerable
+            if is_vul == '1':
+                # return comment(vulnerable forms) as description
+                desc = comment
+                self.vulnerable_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, \
+                                                               name2, asm2, proto2, pseudo2, desc, 1, bb1, bb2))
+            else:
+                choose.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, \
+                                              pseudo2, desc, 1, bb1, bb2))
             self.matched1.add(name1)
             self.matched2.add(name2)
-            print(name1, name2)
+            #print(name1, name2)
         cur.close()
 
     def add_matches_from_query_ratio(self, sql, best, partial, unreliable=None, debug=False):
         if self.all_functions_matched():
             return
-
+        self.heuristics_done += 1
         cur = self.db_cursor()
         try:
             cur.execute(sql)
@@ -1311,36 +1527,61 @@ class ADiff:
             proto1 = row["proto1"]
             proto2 = row["proto2"]
 
-            if name1 in self.matched1 or name2 in self.matched2:
-                continue
+            is_vul = row["is_vul"]
+            comment = row["comment"]
+
+            # 2019.10.05 commented for duplicated matching
+            # if name1 in self.matched1 or name2 in self.matched2:
+            #     continue
 
             r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
             if debug:
                 print
                 "0x%x 0x%x %d" % (int(ea), int(ea2), r)
 
-            if r == 1:
-                self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif r >= 0.5:
-                partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif r < 0.5 and unreliable is not None:
-                unreliable.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+            # 2019.05.23 only user selected match
+            partial_option = True
+            unreliable_option = True
+
+            if partial is self.best_chooser:
+                partial_option = self.best_heuristics
+            elif partial is self.partial_chooser:
+                partial_option = self.partial_heuristics
+            elif partial is self.unreliable_chooser:
+                partial_option = self.unreliable_heuristics
+
+            if unreliable is self.best_chooser:
+                unreliable_option = self.best_heuristics
+            elif unreliable is self.partial_chooser:
+                unreliable_option = self.partial_heuristics
+            elif unreliable is self.unreliable_chooser:
+                unreliable_option = self.unreliable_heuristics
+
+            # if the function is vulnerable
+            if is_vul == '1':
+                # return comment(vulnerable forms) as description
+                desc = comment
+                self.vulnerable_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
             else:
-                partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+
+                if r == 1 and self.best_heuristics:
+                    self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif r >= 0.5 and partial_option:
+                    partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif r < 0.5 and unreliable is not None and unreliable_option:
+                    unreliable.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif partial_option:
+                    partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+
+            self.matched1.add(name1)
+            self.matched2.add(name2)
 
         cur.close()
 
     def add_matches_from_query_ratio_max(self, sql, best, partial, val):
         if self.all_functions_matched():
             return
+        self.heuristics_done += 1
 
         cur = self.db_cursor()
         try:
@@ -1381,23 +1622,47 @@ class ADiff:
             proto1 = row["proto1"]
             proto2 = row["proto2"]
 
-            if name1 in self.matched1 or name2 in self.matched2:
-                continue
+            is_vul = row["is_vul"]
+            comment = row["comment"]
+
+            # 2019.10.05 commented for duplicated matching
+            # if name1 in self.matched1 or name2 in self.matched2:
+            #     continue
 
             r = self.check_ratio(ast1, ast2, pseudo1, pseudo2, asm1, asm2, md1, md2)
 
-            if r == 1:
-                self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif r > val:
-                best.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
-            elif partial is not None:
-                partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
-                self.matched1.add(name1)
-                self.matched2.add(name2)
+            # 2019.05.23 only match
+            best_option = True
+            partial_option = True
+            if best is self.best_chooser:
+                best_option = self.best_heuristics
+            elif best is self.partial_chooser:
+                best_option = self.partial_heuristics
+            elif best is self.unreliable_chooser:
+                best_option = self.unreliable_heuristics
+
+            if partial is self.best_chooser:
+                partial_option = self.best_heuristics
+            elif partial is self.partial_chooser:
+                partial_option = self.partial_heuristics
+            elif partial is self.unreliable_chooser:
+                partial_option = self.unreliable_heuristics
+
+            # if the function is vulnerable
+            if is_vul == '1':
+                # return comment(vulnerable forms) as description
+                desc = comment
+                self.vulnerable_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+            else:
+                if r == 1 and self.best_heuristics:
+                    self.best_chooser.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif r > val and best_option:
+                    best.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+                elif partial is not None and partial_option:
+                    partial.add_item(CChooser.Item(ea, name1, asm1, proto1, pseudo1, ea2, name2, asm2, proto2, pseudo2, desc, r, bb1, bb2))
+
+            self.matched1.add(name1)
+            self.matched2.add(name2)
 
         cur.close()
 
@@ -1465,7 +1730,6 @@ class ADiff:
 
         r = max(v1, v2, v3, v4)
         return r
-
 
     def all_functions_matched(self):
         return len(self.matched1) == self.total_functions1 or \

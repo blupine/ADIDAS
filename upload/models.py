@@ -1,8 +1,10 @@
 from django.db import models
+from statistic.models import *
 
 # Create your models here.
 class Functions(models.Model):
 	id 						= models.AutoField(primary_key = True) 
+	model_type 				= models.ForeignKey(Model_Name, null=True, on_delete=models.SET_NULL)
 	name 					= models.CharField(max_length = 255)
 	address 				= models.TextField(null = True)
 	nodes 					= models.IntegerField(null = True)
@@ -48,55 +50,10 @@ class Functions(models.Model):
 
 	# new field
 	binary_name				= models.TextField(null = True)
-	is_vul					= models.IntegerField(null = True)
-	
-	def __init__(self, datadict):
-		models.Model.__init__(self,
-			name 					= datadict['name'],
-			address 				= datadict['address'],
-			nodes 					= datadict["nodes"],
-			edges 					= datadict['edges'],
-			indegree 				= datadict['indegree'],
-			outdegree 				= datadict['outdegree'],
-			size 					= datadict['size'],
-			instructions			= datadict['instructions'],
-			mnemonics 				= datadict['mnemonics'],
-			names					= datadict['names'],
-			prototype 				= datadict['prototype'],
-			cyclomatic_complexity 	= datadict['cyclomatic_complexity'],
-			primes_value 			= datadict['primes_value'],
-			comment 				= datadict['comment'],
-			mangled_function 		= datadict['mangled_function'],
-			bytes_hash 				= datadict['bytes_hash'],
-			pseudocode 				= datadict['pseudocode'],
-			pseudocode_lines 		= datadict['pseudocode_lines'],
-			pseudocode_hash1 		= datadict['pseudocode_hash1'],
-			pseudocode_primes 		= datadict['pseudocode_primes'],
-			function_flags 			= datadict['function_flags'],
-			assembly 				= datadict['assembly'],
-			prototype2 				= datadict['prototype2'],
-			pseudocode_hash2 		= datadict['pseudocode_hash2'],
-			pseudocode_hash3 		= datadict['pseudocode_hash3'],
-			strongly_connected 		= datadict['strongly_connected'],
-			loops 					= datadict['loops'],
-			rva 					= datadict['rva'],
-			tarjan_topological_sort = datadict['tarjan_topological_sort'],
-			strongly_connected_spp 	= datadict['strongly_connected_spp'],
-			clean_assembly 			= datadict['clean_assembly'],
-			clean_pseudo 			= datadict['clean_pseudo'],			
-			mnemonics_spp 			= datadict['mnemonics_spp'],
-			switches 				= datadict['switches'],
-			function_hash 			= datadict['function_hash'],
-			bytes_sum 				= datadict['bytes_sum'],
-			md_index 				= datadict['md_index'],
-			constants 				= datadict['constants'],
-			constants_count 		= datadict['constants_count'],
-			segment_rva 			= datadict['segment_rva'],			
-			assembly_addrs 			= datadict['assembly_addrs'],
-			kgh_hash 				= datadict['kgh_hash'])
+	is_vul					= models.TextField(null = True)
 
 	class Meta:
-		abstract = True
+			abstract = True
 
 class ARM_Functions(Functions):
 	pass
@@ -114,4 +71,4 @@ class MIPS_Functions(Functions):
 #	processor				= models.TextField(null = True)
 #	md5sum					= models.TextField(null = True)
  	
- # not creating 'version' model 
+ # not creating 'version' model
