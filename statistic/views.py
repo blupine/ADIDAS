@@ -14,12 +14,3 @@ def userdata(request):
 
         context = {'filename' : filename + '.json', 'file_link' : filename + '.xlsx'}
         return render(request, 'index.html', context)
-    # template = loader.get_template('index.html')
-    # #index.html -> "data.json" -> parameter
-    #
-    # #여기서 data.json을 어캐바꾸누
-    # # 해줘
-    # # 쉬벌
-    #
-    # return HttpResponse(template.render())
-
