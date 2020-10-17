@@ -37,39 +37,20 @@ def index(request):
 @csrf_exempt
 def features(request):
     if request.method == 'POST':
-        data = json.loads(request.body.decode('utf-8'))
         try:
+            data = json.loads(request.body.decode('utf-8'))
             if not check_data_validation(data):
                 raise
             success, failed = add_data(data)
             return HttpResponse(str([len(success), len(failed)]))
-        # return HttpResponse("upload complete. \n success : %s \n\n failed  : %s" % (str(success), str(failed)))
 
         except (MySQLdb.Error, MySQLdb.Warning, ValueError) as e:
             return HttpResponse("upload failed. invalid data format")
+        except Exception as e:
+            return HttpResponse("invalid data type")
+
     else:
         return HttpResponse("invalid http method")
-
-# # 2019.05.14 Receive multiple function features and add data to table
-# @csrf_exempt
-# def features(request):
-#     if request.method == 'POST':
-#         data = json.loads(request.body.decode('utf-8'))
-#         try:
-#             if not check_data_validation(data):
-#                 raise
-#             success, failed = add_data(data)
-#             print('===== upload end ============================================')
-#             print(" success : ", len(success))
-#             print(" fail    : ", len(failed))
-#             return HttpResponse(str([len(success), len(failed)]))
-#         # return HttpResponse("upload complete. \n success : %s \n\n failed  : %s" % (str(success), str(failed)))
-#
-#         except (MySQLdb.Error, MySQLdb.Warning, ValueError) as e:
-#             print("upload failed", e)
-#             return HttpResponse("upload failed. invalid data format")
-#     else:
-#         return HttpResponse("invalid http method")
 
 
 # 0: None
@@ -105,35 +86,7 @@ def diff(request):
     else:
         log("Diff Request Failed - [ Invalid http request method ]")
         return HttpResponse("invalid http method")
-# # 2019.05.05 Receive list of function features
-# @csrf_exempt
-# def diff(request):
-#     if request.method == 'POST':
-#         try:
-#             d = json.loads(request.body.decode('utf-8'))
-#             option = d['option']
-#             print("############")
-#
-#             data = json.loads(d['data'])
-#             if not check_data_validation(data):
-#                 raise
-#
-#             ad = ADiff(option)
-#             ret = ad.diff(data)  # ad.diff returns list of best, partial, reliable, vulnerable items
-#             log('\n\t===== diff end ============================================')
-#             print(" \tbest match       : ", len(ret[0]))
-#             print(" \tpartial match    : ", len(ret[1]))
-#             print(" \tunreliable match : ", len(ret[2]))
-#             print(" \tvulnerable match : ", len(ret[3]), '\n')
-#
-#             return HttpResponse(str(ret))
-#         except Exception as e:
-#             print(e)
-#             log("Diff Request Failed - [ Invalid data type request ]")
-#             return HttpResponse("invalid data. check data")
-#     else:
-#         log("Diff Request Failed - [ Invalid http request method ]")
-#         return HttpResponse("invalid http method")
+
 
 
 # 2019.06.08 Diff & return evalution
@@ -194,52 +147,7 @@ def add_data(data):
             failed_list.append(feature['name'])
             continue
         if find_duplication(model, feature):
-            f = model(
-                name 					= feature['name'],
-                address 				= feature['address'],
-                nodes 					= feature["nodes"],
-                edges 					= feature['edges'],
-                indegree 				= feature['indegree'],
-                outdegree 				= feature['outdegree'],
-                size 					= feature['size'],
-                instructions			= feature['instructions'],
-                mnemonics 				= feature['mnemonics'],
-                names					= feature['names'],
-                prototype 				= feature['prototype'],
-                cyclomatic_complexity 	= feature['cyclomatic_complexity'],
-                primes_value 			= feature['primes_value'],
-                comment 				= feature['comment'],
-                mangled_function 		= feature['mangled_function'],
-                bytes_hash 				= feature['bytes_hash'],
-                pseudocode 				= feature['pseudocode'],
-                pseudocode_lines 		= feature['pseudocode_lines'],
-                pseudocode_hash1 		= feature['pseudocode_hash1'],
-                pseudocode_primes 		= feature['pseudocode_primes'],
-                function_flags 			= feature['function_flags'],
-                assembly 				= feature['assembly'],
-                prototype2 				= feature['prototype2'],
-                pseudocode_hash2 		= feature['pseudocode_hash2'],
-                pseudocode_hash3 		= feature['pseudocode_hash3'],
-                strongly_connected 		= feature['strongly_connected'],
-                loops 					= feature['loops'],
-                rva 					= feature['rva'],
-                tarjan_topological_sort = feature['tarjan_topological_sort'],
-                strongly_connected_spp 	= feature['strongly_connected_spp'],
-                clean_assembly 			= feature['clean_assembly'],
-                clean_pseudo 			= feature['clean_pseudo'],
-                mnemonics_spp 			= feature['mnemonics_spp'],
-                switches 				= feature['switches'],
-                function_hash 			= feature['function_hash'],
-                bytes_sum 				= feature['bytes_sum'],
-                md_index 				= feature['md_index'],
-                constants 				= feature['constants'],
-                constants_count 		= feature['constants_count'],
-                segment_rva 			= feature['segment_rva'],
-                assembly_addrs 			= feature['assembly_addrs'],
-                kgh_hash 				= feature['kgh_hash'],
-                binary_name				= feature['binary_name'],
-                is_vul					= feature['is_vul'])
-
+            f = model(feature)
             f.save()
             success_list.append(feature['name'])
         else:
