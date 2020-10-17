@@ -42,17 +42,34 @@ def features(request):
             if not check_data_validation(data):
                 raise
             success, failed = add_data(data)
-            print('===== upload end ============================================')
-            print(" success : ", len(success))
-            print(" fail    : ", len(failed))
             return HttpResponse(str([len(success), len(failed)]))
         # return HttpResponse("upload complete. \n success : %s \n\n failed  : %s" % (str(success), str(failed)))
 
         except (MySQLdb.Error, MySQLdb.Warning, ValueError) as e:
-            print("upload failed", e)
             return HttpResponse("upload failed. invalid data format")
     else:
         return HttpResponse("invalid http method")
+
+# # 2019.05.14 Receive multiple function features and add data to table
+# @csrf_exempt
+# def features(request):
+#     if request.method == 'POST':
+#         data = json.loads(request.body.decode('utf-8'))
+#         try:
+#             if not check_data_validation(data):
+#                 raise
+#             success, failed = add_data(data)
+#             print('===== upload end ============================================')
+#             print(" success : ", len(success))
+#             print(" fail    : ", len(failed))
+#             return HttpResponse(str([len(success), len(failed)]))
+#         # return HttpResponse("upload complete. \n success : %s \n\n failed  : %s" % (str(success), str(failed)))
+#
+#         except (MySQLdb.Error, MySQLdb.Warning, ValueError) as e:
+#             print("upload failed", e)
+#             return HttpResponse("upload failed. invalid data format")
+#     else:
+#         return HttpResponse("invalid http method")
 
 
 # 0: None
@@ -74,28 +91,49 @@ def diff(request):
         try:
             d = json.loads(request.body.decode('utf-8'))
             option = d['option']
-            print("############")
-
             data = json.loads(d['data'])
             if not check_data_validation(data):
                 raise
 
             ad = ADiff(option)
             ret = ad.diff(data)  # ad.diff returns list of best, partial, reliable, vulnerable items
-            log('\n\t===== diff end ============================================')
-            print(" \tbest match       : ", len(ret[0]))
-            print(" \tpartial match    : ", len(ret[1]))
-            print(" \tunreliable match : ", len(ret[2]))
-            print(" \tvulnerable match : ", len(ret[3]), '\n')
 
             return HttpResponse(str(ret))
         except Exception as e:
-            print(e)
             log("Diff Request Failed - [ Invalid data type request ]")
             return HttpResponse("invalid data. check data")
     else:
         log("Diff Request Failed - [ Invalid http request method ]")
         return HttpResponse("invalid http method")
+# # 2019.05.05 Receive list of function features
+# @csrf_exempt
+# def diff(request):
+#     if request.method == 'POST':
+#         try:
+#             d = json.loads(request.body.decode('utf-8'))
+#             option = d['option']
+#             print("############")
+#
+#             data = json.loads(d['data'])
+#             if not check_data_validation(data):
+#                 raise
+#
+#             ad = ADiff(option)
+#             ret = ad.diff(data)  # ad.diff returns list of best, partial, reliable, vulnerable items
+#             log('\n\t===== diff end ============================================')
+#             print(" \tbest match       : ", len(ret[0]))
+#             print(" \tpartial match    : ", len(ret[1]))
+#             print(" \tunreliable match : ", len(ret[2]))
+#             print(" \tvulnerable match : ", len(ret[3]), '\n')
+#
+#             return HttpResponse(str(ret))
+#         except Exception as e:
+#             print(e)
+#             log("Diff Request Failed - [ Invalid data type request ]")
+#             return HttpResponse("invalid data. check data")
+#     else:
+#         log("Diff Request Failed - [ Invalid http request method ]")
+#         return HttpResponse("invalid http method")
 
 
 # 2019.06.08 Diff & return evalution
@@ -152,7 +190,7 @@ def add_data(data):
 
         # print(arch)
         if model is None:
-            print("upload/views add failed list - model is None sibal - arch : [" + arch + "]")
+            print("upload/views add failed list - arch : [" + arch + "]")
             failed_list.append(feature['name'])
             continue
         if find_duplication(model, feature):

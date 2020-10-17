@@ -73,6 +73,7 @@ HEURISTICS.append({
     "flags":HEUR_FLAG_NONE
 })
 
+# noinspection SqlNoDataSourceInspection
 HEURISTICS.append({
     "name":"Bytes hash and names",
     "category":"Best",
@@ -188,10 +189,10 @@ HEURISTICS.append({
 })
 
 HEURISTICS.append({
-    "name":"Same address, nodes, edges and mnemonics",
-    "category":"Best",
-    "ratio":HEUR_TYPE_RATIO,
-    "sql" : """SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Same address, nodes, edges and mnemonics' description,
+    "name": "Same address, nodes, edges and mnemonics",
+    "category": "Best",
+    "ratio": HEUR_TYPE_RATIO,
+    "sql": """SELECT f.address ea, f.name name1, df.address ea2, df.name name2, 'Same address, nodes, edges and mnemonics' description,
                     f.pseudocode pseudo1, df.pseudocode pseudo2,
                     f.assembly asm1, df.assembly asm2,
                     f.pseudocode_primes pseudo_primes1, df.pseudocode_primes pseudo_primes2,
@@ -205,7 +206,7 @@ HEURISTICS.append({
                     AND f.nodes = df.nodes
                     AND f.edges = df.edges
                     AND f.mnemonics = df.mnemonics %POSTFIX%""",
-    "flags":HEUR_FLAG_NONE
+    "flags": HEUR_FLAG_NONE
 })
 
 # Partial
